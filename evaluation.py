@@ -19,7 +19,7 @@ with open("vox1_meta.csv", "r") as f:
 #         gt[line[0]]=line[1]
 
 tp=tn=fp=fn=0
-with open("myseg.csv", "r") as f: # Open csv file with pred results
+with open("vox1_pred.csv", "r") as f: # Open csv file with pred results
     reader = csv.reader(f, delimiter="\t")
     next(reader,None)
     for line in reader:
