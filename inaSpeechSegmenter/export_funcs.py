@@ -27,7 +27,8 @@ import pandas as pd
 from pytextgrid.PraatTextGrid import PraatTextGrid, Interval, Tier
 
 def seg2csv(lseg, fout=None):
-    df = pd.DataFrame.from_records(lseg, columns=['labels', 'start', 'stop'])
+    # df = pd.DataFrame.from_records(lseg, columns=['labels', 'start', 'stop'])
+    df = pd.DataFrame.from_records(lseg, columns=['id', 'label'])
     df.to_csv(fout, sep='\t', index=False)
 
 def seg2textgrid(lseg, fout=None):
