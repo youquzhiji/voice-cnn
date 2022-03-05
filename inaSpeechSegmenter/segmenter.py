@@ -134,11 +134,11 @@ class DnnSegmenter:
         for lab, start, stop in lseg:
             if lab == self.inlabel:
                 batch.append(patches[start:stop, :])
-
+        # print(lseg)
         if len(batch) > 0:
             batch = np.concatenate(batch)
             rawpred = self.nn.predict(batch, batch_size=self.batch_size)
-
+        nn_pred=rawpred if self.ret_nn_pred else None
         ret = []
         for lab, start, stop in lseg:
             if lab != self.inlabel:
@@ -152,7 +152,7 @@ class DnnSegmenter:
             pred = viterbi_decoding(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.outlabels)))
             for lab2, start2, stop2 in _binidx2seglist(pred):
                 ret.append((self.outlabels[int(lab2)], start2+start, stop2+start))            
-        return ret
+        return ret,nn_pred
 
 
 class SpeechMusic(DnnSegmenter):
@@ -170,6 +170,7 @@ class SpeechMusicNoise(DnnSegmenter):
     inlabel = 'energy'
     nmel = 21
     viterbi_arg = 80
+    ret_nn_pred=False
     
 class Gender(DnnSegmenter):
     # Gender Segmentation, requires voice activity detection
@@ -178,6 +179,7 @@ class Gender(DnnSegmenter):
     inlabel = 'speech'
     nmel = 24
     viterbi_arg = 80
+    ret_nn_pred=True
 
 
 class Segmenter:
@@ -244,13 +246,15 @@ class Segmenter:
             lseg.append((lab, start, stop))
 
         # perform voice activity detection
-        lseg = self.vad(mspec, lseg, difflen)
+        lseg = self.vad(mspec, lseg, difflen)[0]
 
         # perform gender segmentation on speech segments
         if self.detect_gender:
-            lseg = self.gender(mspec, lseg, difflen)
+            lseg,ret_nn = self.gender(mspec, lseg, difflen)
+            # print(ret_nn.shape)
 
-        return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
+        # return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
+        return [(lab, ret_nn[1]) for lab, start, stop in lseg]
 
 
     def __call__(self, medianame, tmpdir=None, start_sec=None, stop_sec=None):
