@@ -11,6 +11,11 @@ Categorical outputs -> numerical outputs for probablities of each gender
 
 Demo is in **numerical_demo.py**
 
+**The current CNN output**:
+(speaker_id,(gender,[p(female),p(male)]))
+
+p(female): the probablity of classification as female
+
 ## Introduction
 inaSpeechSegmenter is a CNN-based audio segmentation toolkit.
 
