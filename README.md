@@ -5,16 +5,20 @@
 [![PyPI version](https://badge.fury.io/py/inaSpeechSegmenter.svg)](https://badge.fury.io/py/inaSpeechSegmenter)
 [![Docker Pulls](https://img.shields.io/docker/pulls/inafoss/inaspeechsegmenter)](https://hub.docker.com/r/inafoss/inaspeechsegmenter)
 
-## **Modification**
+## **Important Modification!**
 
 Categorical outputs -> numerical outputs for probablities of each gender 
 
-Demo is in **numerical_demo.py**
+Demo is in **numerical_demo.py** / **API_tutorial.ipynb**
+
+Model evaluation results can be returned through **evaluation.py**
 
 **The current CNN output**:
 (speaker_id,(gender,[p(female),p(male)]))
 
 p(female): the probablity of classification as female
+
+
 
 ## Introduction
 inaSpeechSegmenter is a CNN-based audio segmentation toolkit.
