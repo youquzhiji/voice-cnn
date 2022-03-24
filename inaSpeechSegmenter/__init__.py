@@ -26,4 +26,5 @@
 from .segmenter import Segmenter, seg2csv
 
 from . import _version
+
 __version__ = _version.get_versions()['version']

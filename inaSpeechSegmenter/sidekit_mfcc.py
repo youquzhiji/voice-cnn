@@ -31,12 +31,10 @@ Copyright 2014-2021 Anthony Larcher and Sylvain Meignier
 useful parameters for speaker verification.
 """
 
-
 import numpy
 import soundfile
 import scipy
 from scipy.fftpack.realtransforms import dct
-
 
 __author__ = "Anthony Larcher and Sylvain Meignier"
 __copyright__ = "Copyright 2014-2021 Anthony Larcher and Sylvain Meignier"
@@ -46,10 +44,7 @@ __email__ = "anthony.larcher@univ-lemans.fr"
 __status__ = "Production"
 __docformat__ = 'reStructuredText'
 
-
-
-
-wav_flag = "float32"    # Could be "int16"
+wav_flag = "float32"  # Could be "int16"
 PARAM_TYPE = numpy.float32
 
 
@@ -58,7 +53,7 @@ def read_wav(input_file_name):
     :param input_file_name:
     :return:
     """
-    #with wave.open(input_file_name, "r") as wfh:
+    # with wave.open(input_file_name, "r") as wfh:
     #    (nchannels, sampwidth, framerate, nframes, comptype, compname) = wfh.getparams()
     #    raw = wfh.readframes(nframes * nchannels)
     #    out = struct.unpack_from("%dh" % nframes * nchannels, raw)
@@ -69,8 +64,6 @@ def read_wav(input_file_name):
     sig = numpy.reshape(numpy.array(sig), (-1, nfo.channels)).squeeze()
     sig = sig.astype(numpy.float32)
     return sig, sample_rate, 4
-
-
 
 
 def hz2mel(f, htk=True):
@@ -90,7 +83,7 @@ def hz2mel(f, htk=True):
         f_0 = 0.
         f_sp = 200. / 3.
         brkfrq = 1000.
-        brkpt  = (brkfrq - f_0) / f_sp
+        brkpt = (brkfrq - f_0) / f_sp
         logstep = numpy.exp(numpy.log(6.4) / 27)
 
         linpts = f < brkfrq
@@ -105,6 +98,7 @@ def hz2mel(f, htk=True):
         else:
             return z
 
+
 def mel2hz(z, htk=True):
     """Convert an array of mel values in Hz.
     
@@ -113,13 +107,13 @@ def mel2hz(z, htk=True):
     :return: the equivalent values in Hertz.
     """
     if htk:
-        return 700. * (10**(z / 2595.) - 1)
+        return 700. * (10 ** (z / 2595.) - 1)
     else:
         z = numpy.array(z, dtype=float)
         f_0 = 0
         f_sp = 200. / 3.
         brkfrq = 1000.
-        brkpt  = (brkfrq - f_0) / f_sp
+        brkpt = (brkfrq - f_0) / f_sp
         logstep = numpy.exp(numpy.log(6.4) / 27)
 
         linpts = (z < brkpt)
@@ -134,7 +128,6 @@ def mel2hz(z, htk=True):
             return f[0]
         else:
             return f
-
 
 
 def trfbank(fs, nfft, lowfreq, maxfreq, nlinfilt, nlogfilt, midfreq=1000):
@@ -235,7 +228,7 @@ def power_spectrum(input_sig,
     """
     window_length = int(round(win_time * fs))
     overlap = window_length - int(shift * fs)
-    framed = framing(input_sig, window_length, win_shift=window_length-overlap).copy()
+    framed = framing(input_sig, window_length, win_shift=window_length - overlap).copy()
     # Pre-emphasis filtering is applied after framing to be consistent with stream processing
     framed = pre_emphasis(framed, prefac)
     l = framed.shape[0]
@@ -245,14 +238,14 @@ def power_spectrum(input_sig,
     window = numpy.hanning(window_length)
 
     spec = numpy.ones((l, int(n_fft / 2) + 1), dtype=PARAM_TYPE)
-    log_energy = numpy.log((framed**2).sum(axis=1))
+    log_energy = numpy.log((framed ** 2).sum(axis=1))
     dec = 500000
     start = 0
     stop = min(dec, l)
     while start < l:
         ahan = framed[start:stop, :] * window
         mag = numpy.fft.rfft(ahan, n_fft, axis=-1)
-        spec[start:stop, :] = mag.real**2 + mag.imag**2
+        spec[start:stop, :] = mag.real ** 2 + mag.imag ** 2
         start = stop
         stop = min(stop + dec, l)
 
@@ -271,7 +264,7 @@ def framing(sig, win_size, win_shift=1, context=(0, 0), pad='zeros'):
     if sig.ndim == 1:
         sig = sig[:, numpy.newaxis]
     # Manage padding
-    c = (context, ) + (sig.ndim - 1) * ((0, 0), )
+    c = (context,) + (sig.ndim - 1) * ((0, 0),)
     _win_size = win_size + sum(context)
     shape = (int((sig.shape[0] - win_size) / win_shift) + 1, 1, _win_size, sig.shape[1])
     strides = tuple(map(lambda x: x * dsize, [win_shift * sig.shape[1], 1, sig.shape[1], 1]))
@@ -353,7 +346,7 @@ def mfcc(input_sig,
     n_fft = 2 ** int(numpy.ceil(numpy.log2(int(round(nwin * fs)))))
     fbank = trfbank(fs, n_fft, lowfreq, maxfreq, nlinfilt, nlogfilt)[0]
 
-    mspec = numpy.log(numpy.dot(spec, fbank.T))   # A tester avec log10 et log
+    mspec = numpy.log(numpy.dot(spec, fbank.T))  # A tester avec log10 et log
     # Use the DCT to 'compress' the coefficients (spectrum -> cepstrum domain)
     # The C0 term is removed as it is the constant term
     ceps = dct(mspec, type=2, norm='ortho', axis=-1)[:, 1:nceps + 1]

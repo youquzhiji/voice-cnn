@@ -38,13 +38,11 @@ import random
 
 from skimage.util import view_as_windows as vaw
 
-
 from pyannote.algorithms.utils.viterbi import viterbi_decoding
 from .viterbi_utils import pred2logemission, diag_trans_exp, log_trans_exp
 
 from .features import media2feats
 from .export_funcs import seg2csv, seg2textgrid
-
 
 
 def _energy_activity(loge, ratio):
@@ -56,12 +54,12 @@ def _energy_activity(loge, ratio):
 
 def _get_patches(mspec, w, step):
     h = mspec.shape[1]
-    data = vaw(mspec, (w,h), step=step)
-    data.shape = (len(data), w*h)
+    data = vaw(mspec, (w, h), step=step)
+    data.shape = (len(data), w * h)
     data = (data - np.mean(data, axis=1).reshape((len(data), 1))) / np.std(data, axis=1).reshape((len(data), 1))
-    lfill = [data[0,:].reshape(1, h*w)] * (w // (2 * step))
-    rfill = [data[-1,:].reshape(1, h*w)] * (w // (2* step) - 1 + len(mspec) % 2)
-    data = np.vstack(lfill + [data] + rfill )
+    lfill = [data[0, :].reshape(1, h * w)] * (w // (2 * step))
+    rfill = [data[-1, :].reshape(1, h * w)] * (w // (2 * step) - 1 + len(mspec) % 2)
+    data = np.vstack(lfill + [data] + rfill)
     finite = np.all(np.isfinite(data), axis=1)
     data.shape = (len(data), w, h)
     return data, finite
@@ -102,6 +100,7 @@ class DnnSegmenter:
         other labels will stay unchanged
     * outlabels: the labels associated the output of neural network models
     """
+
     def __init__(self, batch_size):
         # load the DNN model
         url = 'https://github.com/ina-foss/inaSpeechSegmenter/releases/download/models/'
@@ -109,7 +108,7 @@ class DnnSegmenter:
         self.nn = keras.models.load_model(model_path, compile=False)
         self.batch_size = batch_size
 
-    def __call__(self, mspec, lseg, difflen = 0):
+    def __call__(self, mspec, lseg, difflen=0):
         """
         *** input
         * mspec: mel spectrogram
@@ -122,14 +121,14 @@ class DnnSegmenter:
 
         if self.nmel < 24:
             mspec = mspec[:, :self.nmel].copy()
-        
+
         patches, finite = _get_patches(mspec, 68, 2)
         if difflen > 0:
             patches = patches[:-int(difflen / 2), :, :]
             finite = finite[:-int(difflen / 2)]
-            
+
         assert len(finite) == len(patches), (len(patches), len(finite))
-            
+
         batch = []
         for lab, start, stop in lseg:
             if lab == self.inlabel:
@@ -138,7 +137,7 @@ class DnnSegmenter:
         if len(batch) > 0:
             batch = np.concatenate(batch)
             rawpred = self.nn.predict(batch, batch_size=self.batch_size)
-        nn_pred=rawpred if self.ret_nn_pred else None
+        nn_pred = rawpred if self.ret_nn_pred else None
         ret = []
         for lab, start, stop in lseg:
             if lab != self.inlabel:
@@ -146,13 +145,13 @@ class DnnSegmenter:
                 continue
 
             l = stop - start
-            r = rawpred[:l] 
+            r = rawpred[:l]
             rawpred = rawpred[l:]
             r[finite[start:stop] == False, :] = 0.5
             pred = viterbi_decoding(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.outlabels)))
             for lab2, start2, stop2 in _binidx2seglist(pred):
-                ret.append((self.outlabels[int(lab2)], start2+start, stop2+start))            
-        return ret,nn_pred
+                ret.append((self.outlabels[int(lab2)], start2 + start, stop2 + start))
+        return ret, nn_pred
 
 
 class SpeechMusic(DnnSegmenter):
@@ -163,6 +162,7 @@ class SpeechMusic(DnnSegmenter):
     nmel = 21
     viterbi_arg = 150
 
+
 class SpeechMusicNoise(DnnSegmenter):
     # Voice activity detection: requires energetic activity detection
     outlabels = ('speech', 'music', 'noise')
@@ -170,8 +170,9 @@ class SpeechMusicNoise(DnnSegmenter):
     inlabel = 'energy'
     nmel = 21
     viterbi_arg = 80
-    ret_nn_pred=False
-    
+    ret_nn_pred = False
+
+
 class Gender(DnnSegmenter):
     # Gender Segmentation, requires voice activity detection
     outlabels = ('female', 'male')
@@ -179,7 +180,7 @@ class Gender(DnnSegmenter):
     inlabel = 'speech'
     nmel = 24
     viterbi_arg = 80
-    ret_nn_pred=True
+    ret_nn_pred = True
 
 
 class Segmenter:
@@ -200,14 +201,14 @@ class Segmenter:
         'batch_size' : large values of batch_size (ex: 1024) allow faster processing times.
                 They also require more memory on the GPU.
                 default value (32) is slow, but works on any hardware
-        """      
+        """
 
         # test ffmpeg installation
         if shutil.which(ffmpeg) is None:
-            raise(Exception("""ffmpeg program not found"""))
+            raise (Exception("""ffmpeg program not found"""))
         self.ffmpeg = ffmpeg
 
-#        self.graph = KB.get_session().graph # To prevent the issue of keras with tensorflow backend for async tasks
+        #        self.graph = KB.get_session().graph # To prevent the issue of keras with tensorflow backend for async tasks
 
         # set energic ratio for 1st VAD
         self.energy_ratio = energy_ratio
@@ -225,16 +226,12 @@ class Segmenter:
         if detect_gender:
             self.gender = Gender(batch_size)
 
-
     def segment_feats(self, mspec, loge, difflen, start_sec):
         """
         do segmentation
         require input corresponding to wav file sampled at 16000Hz
         with a single channel
         """
-
-
-
 
         # perform energy-based activity detection
         lseg = []
@@ -250,12 +247,11 @@ class Segmenter:
 
         # perform gender segmentation on speech segments
         if self.detect_gender:
-            lseg,ret_nn = self.gender(mspec, lseg, difflen)
+            lseg, ret_nn = self.gender(mspec, lseg, difflen)
             # print(ret_nn.shape)
 
         # return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
         return [(lab, ret_nn[1]) for lab, start, stop in lseg]
-
 
     def __call__(self, medianame, tmpdir=None, start_sec=None, stop_sec=None):
         """
@@ -269,16 +265,16 @@ class Segmenter:
         * start_sec (seconds): sound stream before start_sec won't be processed
         * stop_sec (seconds): sound stream after stop_sec won't be processed
         """
-        
+
         mspec, loge, difflen = media2feats(medianame, tmpdir, start_sec, stop_sec, self.ffmpeg)
         if start_sec is None:
             start_sec = 0
         # do segmentation   
         return self.segment_feats(mspec, loge, difflen, start_sec)
 
-    
-    def batch_process(self, linput, loutput, tmpdir=None, verbose=False, skipifexist=False, nbtry=1, trydelay=2., output_format='csv'):
-        
+    def batch_process(self, linput, loutput, tmpdir=None, verbose=False, skipifexist=False, nbtry=1, trydelay=2.,
+                      output_format='csv'):
+
         if verbose:
             print('batch_processing %d files' % len(linput))
 
@@ -288,9 +284,9 @@ class Segmenter:
             fexport = seg2textgrid
         else:
             raise NotImplementedError()
-            
+
         t_batch_start = time.time()
-        
+
         lmsg = []
         fg = featGenerator(linput.copy(), loutput.copy(), tmpdir, self.ffmpeg, skipifexist, nbtry, trydelay)
         i = 0
@@ -302,12 +298,12 @@ class Segmenter:
             if feats is None:
                 break
             mspec, loge, difflen = feats
-            #if verbose == True:
+            # if verbose == True:
             #    print(i, linput[i], loutput[i])
             b = time.time()
             lseg = self.segment_feats(mspec, loge, difflen, 0)
-            fexport(lseg, loutput[len(lmsg) -1])
-            lmsg[-1] = (lmsg[-1][0], lmsg[-1][1], 'ok ' + str(time.time() -b))
+            fexport(lseg, loutput[len(lmsg) - 1])
+            lmsg[-1] = (lmsg[-1][0], lmsg[-1][1], 'ok ' + str(time.time() - b))
 
         t_batch_dur = time.time() - t_batch_start
         nb_processed = len([e for e in lmsg if e[1] == 0])
@@ -329,8 +325,8 @@ def medialist2feats(lin, lout, tmpdir, ffmpeg, skipifexist, nbtry, trydelay):
     while ret is None and len(lin) > 0:
         src = lin.pop(0)
         dst = lout.pop(0)
-#        print('popping', src)
-        
+        #        print('popping', src)
+
         # if file exists: skipp
         if skipifexist and os.path.exists(dst):
             msg.append((dst, 1, 'already exists'))
@@ -340,7 +336,7 @@ def medialist2feats(lin, lout, tmpdir, ffmpeg, skipifexist, nbtry, trydelay):
         dname = os.path.dirname(dst)
         if not os.path.isdir(dname):
             os.makedirs(dname)
-        
+
         itry = 0
         while ret is None and itry < nbtry:
             try:
@@ -354,23 +350,24 @@ def medialist2feats(lin, lout, tmpdir, ffmpeg, skipifexist, nbtry, trydelay):
             msg.append((dst, 2, 'error: ' + str(errmsg)))
         else:
             msg.append((dst, 0, 'ok'))
-            
+
     return ret, msg
 
-    
+
 def featGenerator(ilist, olist, tmpdir=None, ffmpeg='ffmpeg', skipifexist=False, nbtry=1, trydelay=2.):
-#    print('init feat gen', len(ilist))
-    thread = ThreadReturning(target = medialist2feats, args=[ilist, olist, tmpdir, ffmpeg, skipifexist, nbtry, trydelay])
+    #    print('init feat gen', len(ilist))
+    thread = ThreadReturning(target=medialist2feats, args=[ilist, olist, tmpdir, ffmpeg, skipifexist, nbtry, trydelay])
     thread.start()
     while True:
         ret, msg = thread.join()
-#        print('join done', len(ilist))
-#        print('new list', ilist)
-        #ilist = ilist[len(msg):]
-        #olist = olist[len(msg):]
+        #        print('join done', len(ilist))
+        #        print('new list', ilist)
+        # ilist = ilist[len(msg):]
+        # olist = olist[len(msg):]
         if len(ilist) == 0:
             break
-        thread = ThreadReturning(target = medialist2feats, args=[ilist, olist, tmpdir, ffmpeg, skipifexist, nbtry, trydelay])
+        thread = ThreadReturning(target=medialist2feats,
+                                 args=[ilist, olist, tmpdir, ffmpeg, skipifexist, nbtry, trydelay])
         thread.start()
         yield ret, msg
     yield ret, msg
