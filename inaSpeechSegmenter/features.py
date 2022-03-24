@@ -32,6 +32,7 @@ import numpy as np
 # os.environ['SIDEKIT'] = 'theano=false,libsvm=false,cuda=false'
 # from sidekit.frontend.io import read_wav
 # from sidekit.frontend.features import mfcc
+from .constants import ffmpeg
 from .sidekit_mfcc import read_wav, mfcc
 
 
@@ -69,7 +70,7 @@ def _wav2feats(wavname):
     return mspec, loge, difflen
 
 
-def media2feats(medianame, tmpdir, start_sec, stop_sec, ffmpeg):
+def media2feats(medianame, tmpdir, start_sec, stop_sec):
     """
     Convert media to temp wav 16k file and return features
     """

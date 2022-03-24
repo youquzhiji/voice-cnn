@@ -25,24 +25,20 @@
 
 
 import os
-import sys
-
-import numpy as np
-from tensorflow import keras
-from tensorflow.keras.utils import get_file
-from .thread_returning import ThreadReturning
-
-import shutil
-import time
 import random
+import sys
+import time
+from typing import NamedTuple, Literal
 
-from skimage.util import view_as_windows as vaw
-
+import keras
+import numpy as np
 from pyannote.algorithms.utils.viterbi import viterbi_decoding
-from .viterbi_utils import pred2logemission, diag_trans_exp, log_trans_exp
+from skimage.util import view_as_windows as vaw
+from tensorflow.keras.utils import get_file
 
 from .features import media2feats
-from .export_funcs import seg2csv, seg2textgrid
+from .thread_returning import ThreadReturning
+from .viterbi_utils import pred2logemission, diag_trans_exp, log_trans_exp
 
 
 def _energy_activity(loge, ratio):
@@ -183,8 +179,30 @@ class Gender(DnnSegmenter):
     ret_nn_pred = True
 
 
+class ResultFrame(NamedTuple):
+    gender: str
+    start: float
+    end: float
+
+
+class Result(NamedTuple):
+    frames: list[ResultFrame]
+    file: str
+
+
+class BatchResults(NamedTuple):
+    results: list[Result]
+    time_full: float
+    time_avg: float
+    successes: int
+    messages: list[tuple[str, int]]
+
+
+VadEngine = Literal['smn', 'sm']
+
+
 class Segmenter:
-    def __init__(self, vad_engine='smn', detect_gender=True, ffmpeg='ffmpeg', batch_size=32, energy_ratio=0.03):
+    def __init__(self, vad_engine: VadEngine = 'smn', detect_gender: bool = True, batch_size=32, energy_ratio=0.03):
         """
         Load neural network models
         
@@ -202,14 +220,6 @@ class Segmenter:
                 They also require more memory on the GPU.
                 default value (32) is slow, but works on any hardware
         """
-
-        # test ffmpeg installation
-        if shutil.which(ffmpeg) is None:
-            raise (Exception("""ffmpeg program not found"""))
-        self.ffmpeg = ffmpeg
-
-        #        self.graph = KB.get_session().graph # To prevent the issue of keras with tensorflow backend for async tasks
-
         # set energic ratio for 1st VAD
         self.energy_ratio = energy_ratio
 
@@ -226,7 +236,7 @@ class Segmenter:
         if detect_gender:
             self.gender = Gender(batch_size)
 
-    def segment_feats(self, mspec, loge, difflen, start_sec):
+    def segment_feats(self, mspec, loge, difflen):
         """
         do segmentation
         require input corresponding to wav file sampled at 16000Hz
@@ -266,55 +276,50 @@ class Segmenter:
         * stop_sec (seconds): sound stream after stop_sec won't be processed
         """
 
-        mspec, loge, difflen = media2feats(medianame, tmpdir, start_sec, stop_sec, self.ffmpeg)
+        mspec, loge, difflen = media2feats(medianame, tmpdir, start_sec, stop_sec)
         if start_sec is None:
             start_sec = 0
         # do segmentation   
         return self.segment_feats(mspec, loge, difflen, start_sec)
 
-    def batch_process(self, linput, loutput, tmpdir=None, verbose=False, skipifexist=False, nbtry=1, trydelay=2.,
-                      output_format='csv'):
 
-        if verbose:
-            print('batch_processing %d files' % len(linput))
+    def process(self, inp: list[str], tmpdir=None, verbose=False, skip_if_exist=False,
+                nbtry=1, try_delay=2.) -> BatchResults:
+        """
+        Process audio and return results
 
-        if output_format == 'csv':
-            fexport = seg2csv
-        elif output_format == 'textgrid':
-            fexport = seg2textgrid
-        else:
-            raise NotImplementedError()
-
+        :param inp: Input files
+        :param tmpdir: Temporary directory
+        :param verbose: Verbose logging
+        :param skip_if_exist:
+        :param nbtry:
+        :param try_delay:
+        :return:
+        """
         t_batch_start = time.time()
 
+        results: list[Result] = []
         lmsg = []
-        fg = featGenerator(linput.copy(), loutput.copy(), tmpdir, self.ffmpeg, skipifexist, nbtry, trydelay)
+        fg = featGenerator(inp.copy(), inp.copy(), tmpdir, skip_if_exist, nbtry, try_delay)
         i = 0
         for feats, msg in fg:
             lmsg += msg
             i += len(msg)
             if verbose:
-                print('%d/%d' % (i, len(linput)), msg)
+                print('%d/%d' % (i, len(inp)), msg)
             if feats is None:
                 break
-            mspec, loge, difflen = feats
-            # if verbose == True:
-            #    print(i, linput[i], loutput[i])
-            b = time.time()
-            lseg = self.segment_feats(mspec, loge, difflen, 0)
-            fexport(lseg, loutput[len(lmsg) - 1])
-            lmsg[-1] = (lmsg[-1][0], lmsg[-1][1], 'ok ' + str(time.time() - b))
+            mspec, loge, diff_len = feats
+            lseg = self.segment_feats(mspec, loge, diff_len, 0)
+            results.append(Result([ResultFrame(*s) for s in lseg], inp[len(lmsg) - 1]))
 
         t_batch_dur = time.time() - t_batch_start
         nb_processed = len([e for e in lmsg if e[1] == 0])
-        if nb_processed > 0:
-            avg = t_batch_dur / nb_processed
-        else:
-            avg = -1
-        return t_batch_dur, nb_processed, avg, lmsg
+        avg = t_batch_dur / nb_processed if nb_processed else -1
+        return BatchResults(results, t_batch_dur, avg, nb_processed, lmsg)
 
 
-def medialist2feats(lin, lout, tmpdir, ffmpeg, skipifexist, nbtry, trydelay):
+def medialist2feats(lin, lout, tmpdir, skipifexist, nbtry, trydelay):
     """
     To be used when processing batches
     if resulting file exists, it is skipped
@@ -340,7 +345,7 @@ def medialist2feats(lin, lout, tmpdir, ffmpeg, skipifexist, nbtry, trydelay):
         itry = 0
         while ret is None and itry < nbtry:
             try:
-                ret = media2feats(src, tmpdir, None, None, ffmpeg)
+                ret = media2feats(src, tmpdir, None, None)
             except:
                 itry += 1
                 errmsg = sys.exc_info()[0]
@@ -354,9 +359,9 @@ def medialist2feats(lin, lout, tmpdir, ffmpeg, skipifexist, nbtry, trydelay):
     return ret, msg
 
 
-def featGenerator(ilist, olist, tmpdir=None, ffmpeg='ffmpeg', skipifexist=False, nbtry=1, trydelay=2.):
+def featGenerator(ilist, olist, tmpdir=None, skipifexist=False, nbtry=1, trydelay=2.):
     #    print('init feat gen', len(ilist))
-    thread = ThreadReturning(target=medialist2feats, args=[ilist, olist, tmpdir, ffmpeg, skipifexist, nbtry, trydelay])
+    thread = ThreadReturning(target=medialist2feats, args=[ilist, olist, tmpdir, skipifexist, nbtry, trydelay])
     thread.start()
     while True:
         ret, msg = thread.join()
@@ -367,7 +372,7 @@ def featGenerator(ilist, olist, tmpdir=None, ffmpeg='ffmpeg', skipifexist=False,
         if len(ilist) == 0:
             break
         thread = ThreadReturning(target=medialist2feats,
-                                 args=[ilist, olist, tmpdir, ffmpeg, skipifexist, nbtry, trydelay])
+                                 args=[ilist, olist, tmpdir, skipifexist, nbtry, trydelay])
         thread.start()
         yield ret, msg
     yield ret, msg
