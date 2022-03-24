@@ -37,7 +37,6 @@ from skimage.util import view_as_windows as vaw
 from tensorflow.keras.utils import get_file
 
 from .features import media2feats
-from .thread_returning import ThreadReturning
 from .viterbi_utils import pred2logemission, diag_trans_exp, log_trans_exp
 
 
@@ -280,43 +279,7 @@ class Segmenter:
         if start_sec is None:
             start_sec = 0
         # do segmentation   
-        return self.segment_feats(mspec, loge, difflen, start_sec)
-
-
-    def process(self, inp: list[str], tmpdir=None, verbose=False, skip_if_exist=False,
-                nbtry=1, try_delay=2.) -> BatchResults:
-        """
-        Process audio and return results
-
-        :param inp: Input files
-        :param tmpdir: Temporary directory
-        :param verbose: Verbose logging
-        :param skip_if_exist:
-        :param nbtry:
-        :param try_delay:
-        :return:
-        """
-        t_batch_start = time.time()
-
-        results: list[Result] = []
-        lmsg = []
-        fg = featGenerator(inp.copy(), inp.copy(), tmpdir, skip_if_exist, nbtry, try_delay)
-        i = 0
-        for feats, msg in fg:
-            lmsg += msg
-            i += len(msg)
-            if verbose:
-                print('%d/%d' % (i, len(inp)), msg)
-            if feats is None:
-                break
-            mspec, loge, diff_len = feats
-            lseg = self.segment_feats(mspec, loge, diff_len, 0)
-            results.append(Result([ResultFrame(*s) for s in lseg], inp[len(lmsg) - 1]))
-
-        t_batch_dur = time.time() - t_batch_start
-        nb_processed = len([e for e in lmsg if e[1] == 0])
-        avg = t_batch_dur / nb_processed if nb_processed else -1
-        return BatchResults(results, t_batch_dur, avg, nb_processed, lmsg)
+        return self.segment_feats(mspec, loge, difflen)
 
 
 def medialist2feats(lin, lout, tmpdir, skipifexist, nbtry, trydelay):
@@ -357,22 +320,3 @@ def medialist2feats(lin, lout, tmpdir, skipifexist, nbtry, trydelay):
             msg.append((dst, 0, 'ok'))
 
     return ret, msg
-
-
-def featGenerator(ilist, olist, tmpdir=None, skipifexist=False, nbtry=1, trydelay=2.):
-    #    print('init feat gen', len(ilist))
-    thread = ThreadReturning(target=medialist2feats, args=[ilist, olist, tmpdir, skipifexist, nbtry, trydelay])
-    thread.start()
-    while True:
-        ret, msg = thread.join()
-        #        print('join done', len(ilist))
-        #        print('new list', ilist)
-        # ilist = ilist[len(msg):]
-        # olist = olist[len(msg):]
-        if len(ilist) == 0:
-            break
-        thread = ThreadReturning(target=medialist2feats,
-                                 args=[ilist, olist, tmpdir, skipifexist, nbtry, trydelay])
-        thread.start()
-        yield ret, msg
-    yield ret, msg
