@@ -27,12 +27,14 @@ import os
 import tempfile
 import warnings
 from subprocess import Popen, PIPE
+from typing import Optional
+
 import numpy as np
 
 # os.environ['SIDEKIT'] = 'theano=false,libsvm=false,cuda=false'
 # from sidekit.frontend.io import read_wav
 # from sidekit.frontend.features import mfcc
-from .constants import ffmpeg
+from .constants import ina_config
 from .sidekit_mfcc import read_wav, mfcc
 
 
@@ -70,21 +72,17 @@ def _wav2feats(wavname):
     return mspec, loge, difflen
 
 
-def media2feats(medianame, tmpdir, start_sec, stop_sec):
+def media2feats(path: os.PathLike, start_sec: int = 0, stop_sec: Optional[int] = None):
     """
     Convert media to temp wav 16k file and return features
     """
+    base, _ = os.path.splitext(os.path.basename(path))
 
-    base, _ = os.path.splitext(os.path.basename(medianame))
-
-    with tempfile.TemporaryDirectory(dir=tmpdir) as tmpdirname:
+    with tempfile.TemporaryDirectory(dir=ina_config.tmp_dir) as tmpdirname:
         # build ffmpeg command line
         tmpwav = tmpdirname + '/' + base + '.wav'
-        args = [ffmpeg, '-y', '-i', medianame, '-ar', '16000', '-ac', '1']
-        if start_sec is None:
-            start_sec = 0
-        else:
-            args += ['-ss', '%f' % start_sec]
+        args = [ina_config.ffmpeg, '-y', '-i', path, '-ar', '16000', '-ac', '1']
+        args += ['-ss', '%f' % start_sec]
 
         if stop_sec is not None:
             args += ['-to', '%f' % stop_sec]

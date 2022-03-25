@@ -28,7 +28,7 @@ import os
 import random
 import sys
 import time
-from typing import NamedTuple, Literal
+from typing import NamedTuple, Literal, Optional
 
 import keras
 import numpy as np
@@ -201,7 +201,8 @@ VadEngine = Literal['smn', 'sm']
 
 
 class Segmenter:
-    def __init__(self, vad_engine: VadEngine = 'smn', detect_gender: bool = True, batch_size=32, energy_ratio=0.03):
+    def __init__(self, vad_engine: VadEngine = 'smn', detect_gender: bool = True, batch_size: int = 32,
+                 energy_ratio: float = 0.03):
         """
         Load neural network models
         
@@ -219,7 +220,7 @@ class Segmenter:
                 They also require more memory on the GPU.
                 default value (32) is slow, but works on any hardware
         """
-        # set energic ratio for 1st VAD
+        # set energy ratio for 1st VAD
         self.energy_ratio = energy_ratio
 
         # select speech/music or speech/music/noise voice activity detection engine
@@ -235,7 +236,7 @@ class Segmenter:
         if detect_gender:
             self.gender = Gender(batch_size)
 
-    def segment_feats(self, mspec, loge, difflen):
+    def segment_feats(self, mspec, loge, difflen, start_sec):
         """
         do segmentation
         require input corresponding to wav file sampled at 16000Hz
@@ -257,66 +258,20 @@ class Segmenter:
         # perform gender segmentation on speech segments
         if self.detect_gender:
             lseg, ret_nn = self.gender(mspec, lseg, difflen)
+            return [(lab, ret_nn[1]) for lab, start, stop in lseg]
             # print(ret_nn.shape)
 
-        # return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
-        return [(lab, ret_nn[1]) for lab, start, stop in lseg]
+        return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
 
-    def __call__(self, medianame, tmpdir=None, start_sec=None, stop_sec=None):
+    def __call__(self, filename: os.PathLike, start_sec: int = 0, stop_sec: Optional[int] = None):
         """
         Return segmentation of a given file
                 * convert file to wav 16k mono with ffmpeg
                 * call NN segmentation procedures
-        * media_name: path to the media to be processed (including remote url)
+        * filename: path to the media to be processed (including remote url)
                 may include any format supported by ffmpeg
-        * tmpdir: allow to define a custom path for storing temporary files
-                fast read/write HD are a good choice
         * start_sec (seconds): sound stream before start_sec won't be processed
         * stop_sec (seconds): sound stream after stop_sec won't be processed
         """
-
-        mspec, loge, difflen = media2feats(medianame, tmpdir, start_sec, stop_sec)
-        if start_sec is None:
-            start_sec = 0
-        # do segmentation   
-        return self.segment_feats(mspec, loge, difflen)
-
-
-def medialist2feats(lin, lout, tmpdir, skipifexist, nbtry, trydelay):
-    """
-    To be used when processing batches
-    if resulting file exists, it is skipped
-    in case of remote files, access is tried nbtry times
-    """
-    ret = None
-    msg = []
-    while ret is None and len(lin) > 0:
-        src = lin.pop(0)
-        dst = lout.pop(0)
-        #        print('popping', src)
-
-        # if file exists: skipp
-        if skipifexist and os.path.exists(dst):
-            msg.append((dst, 1, 'already exists'))
-            continue
-
-        # create storing directory if required
-        dname = os.path.dirname(dst)
-        if not os.path.isdir(dname):
-            os.makedirs(dname)
-
-        itry = 0
-        while ret is None and itry < nbtry:
-            try:
-                ret = media2feats(src, tmpdir, None, None)
-            except:
-                itry += 1
-                errmsg = sys.exc_info()[0]
-                if itry != nbtry:
-                    time.sleep(random.random() * trydelay)
-        if ret is None:
-            msg.append((dst, 2, 'error: ' + str(errmsg)))
-        else:
-            msg.append((dst, 0, 'ok'))
-
-    return ret, msg
+        mspec, loge, difflen = media2feats(filename, start_sec, stop_sec)
+        return self.segment_feats(mspec, loge, difflen, start_sec)
