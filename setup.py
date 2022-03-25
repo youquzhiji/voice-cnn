@@ -119,7 +119,7 @@ setup(
     long_description=LONGDESCRIPTION,
     long_description_content_type='text/markdown',
     scripts=[os.path.join('scripts', script) for script in \
-             ['ina_speech_segmenter.py', 'ina_speech_segmenter_pyro_client.py', 'ina_speech_segmenter_pyro_server.py',
+             ['ina_speech_segmenter_pyro_client.py', 'ina_speech_segmenter_pyro_server.py',
               'ina_speech_segmenter_pyro_client_setjobs.py']],
     classifiers=CLASSIFIERS,
     python_requires='>=3.6',
