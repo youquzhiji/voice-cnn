@@ -1,11 +1,19 @@
 import os
 import shutil
 from dataclasses import dataclass
-from typing import Optional, Literal, Union
+from typing import Optional, Literal, Union, NamedTuple
 
 # Types
 VadEngine = Literal['smn', 'sm']
 PathLike = Union[str, bytes, os.PathLike]
+InaLabel = Literal['speech', 'music', 'noise', 'male', 'female']
+
+
+class ResultFrame(NamedTuple):
+    label: str
+    start: float
+    end: float
+    confidence: Optional[float] = None
 
 
 @dataclass

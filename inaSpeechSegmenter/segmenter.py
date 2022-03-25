@@ -24,8 +24,7 @@
 # THE SOFTWARE.
 
 
-import os
-from typing import NamedTuple, Literal, Optional, Union
+from typing import Optional, Any
 
 import keras
 import numpy as np
@@ -33,7 +32,7 @@ from pyannote.algorithms.utils.viterbi import viterbi_decoding
 from skimage.util import view_as_windows as vaw
 from tensorflow.keras.utils import get_file
 
-from .constants import VadEngine, PathLike
+from .constants import VadEngine, PathLike, ResultFrame, InaLabel
 from .features import media2feats
 from .viterbi_utils import pred2logemission, diag_trans_exp, log_trans_exp
 
@@ -58,30 +57,28 @@ def _get_patches(mspec, w, step):
     return data, finite
 
 
-def _binidx2seglist(binidx):
+def _bin_labels_to_segments(bin_labels: list) -> list[tuple]:
     """
-    ss._binidx2seglist((['f'] * 5) + (['bbb'] * 10) + ['v'] * 5)
-    Out: [('f', 0, 5), ('bbb', 5, 15), ('v', 15, 20)]
-    
-    #TODO: is there a pandas alternative??
+    Convert bin labels (time-axis list data) to segment data
+
+    >>> _bin_labels_to_segments(['female'] * 5 + ['male'] * 10 + ['noise'] * 5)
+    [('f', 0, 5), ('bbb', 5, 15), ('v', 15, 20)]
     """
-    curlabel = None
-    bseg = -1
+    if len(bin_labels) == 0:
+        return []
+
+    current_label = None
+    segment_start = -1
     ret = []
-    for i, e in enumerate(binidx):
-        if e != curlabel:
-            if curlabel is not None:
-                ret.append((curlabel, bseg, i))
-            curlabel = e
-            bseg = i
-    ret.append((curlabel, bseg, i + 1))
+    i = 0
+    for i, e in enumerate(bin_labels):
+        if e != current_label:
+            if current_label is not None:
+                ret.append((current_label, segment_start, i))
+            current_label = e
+            segment_start = i
+    ret.append((current_label, segment_start, i + 1))
     return ret
-
-
-class ResultFrame(NamedTuple):
-    label: str
-    start: float
-    end: float
 
 
 class DnnSegmenter:
@@ -99,10 +96,11 @@ class DnnSegmenter:
         other labels will stay unchanged
     * out_labels: the labels associated the output of neural network models
     """
+    nn: keras.Model
     num_mel: int
     model_file_name: str
-    in_label: str
-    out_labels: tuple[str]
+    in_label: InaLabel
+    out_labels: tuple[InaLabel]
     viterbi_arg: int
     ret_nn_pred: bool
 
@@ -113,7 +111,7 @@ class DnnSegmenter:
         self.nn = keras.models.load_model(model_path, compile=False)
         self.batch_size = batch_size
 
-    def __call__(self, mspec: np.ndarray, lseg: list[ResultFrame], difflen=0):
+    def __call__(self, mspec: np.ndarray, lseg: list[ResultFrame], difflen=0) -> list[ResultFrame]:
         """
         *** input
         * mspec: mel spectrogram
@@ -134,30 +132,41 @@ class DnnSegmenter:
         assert len(finite) == len(patches), (len(patches), len(finite))
 
         batch = []
-        for label, start, stop in lseg:
-            if label == self.in_label:
-                batch.append(patches[start:stop, :])
+        for seg in lseg:
+            if seg.label == self.in_label:
+                batch.append(patches[seg.start:seg.end, :])
 
         if len(batch) > 0:
             batch = np.concatenate(batch)
 
-        raw_nn_pred = self.nn.predict(batch, batch_size=self.batch_size)
+        nn_pred_remaining = self.nn.predict(batch, batch_size=self.batch_size)
 
+        # Process Windows
         ret = []
-        for label, start, stop in lseg:
-            if label != self.in_label:
-                ret.append((label, start, stop))
+        for cur in lseg:
+            # Ignored windows
+            if cur.label != self.in_label:
+                ret.append(cur)
                 continue
 
-            l = stop - start
-            r = raw_nn_pred[:l]
-            raw_nn_pred = raw_nn_pred[l:]
-            r[finite[start:stop] == False, :] = 0.5
-            pred = viterbi_decoding(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.out_labels)))
-            for lab2, start2, stop2 in _binidx2seglist(pred):
-                ret.append((self.out_labels[int(lab2)], start2 + start, stop2 + start))
+            # Gather result window
+            l = cur.end - cur.start
+            r = nn_pred_remaining[:l]
+            nn_pred_remaining = nn_pred_remaining[l:]
+            r[finite[cur.start:cur.end] == False, :] = 0.5
 
-        return ret, raw_nn_pred if self.ret_nn_pred else None
+            # Modify outputs
+            pred = viterbi_decoding(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.out_labels)))
+            for label_index2, start2, stop2 in _bin_labels_to_segments(pred):
+                # Calculate confidence
+                label_index2 = int(label_index2)
+                confidence_this = np.mean(r[start2:stop2, label_index2])
+                confidence_others = np.mean(r[start2:stop2, [i for i in range(r.shape[1]) if i != label_index2]])
+                confidence = confidence_this / (confidence_this + confidence_others)
+
+                ret.append(ResultFrame(self.out_labels[int(label_index2)], start2 + cur.start, stop2 + cur.start, confidence))
+
+        return ret
 
 
 class SpeechMusic(DnnSegmenter):
@@ -213,44 +222,40 @@ class Segmenter:
         self.energy_ratio = energy_ratio
 
         # select speech/music or speech/music/noise voice activity detection engine
-        assert vad_engine in ['sm', 'smn']
         if vad_engine == 'sm':
             self.vad = SpeechMusic(batch_size)
         elif vad_engine == 'smn':
             self.vad = SpeechMusicNoise(batch_size)
 
         # load gender detection NN if required
-        assert detect_gender in [True, False]
         self.detect_gender = detect_gender
         if detect_gender:
             self.gender = Gender(batch_size)
 
-    def segment_feats(self, mspec, loge, difflen, start_sec):
+    def segment_feats(self, mspec: np.ndarray, loge, difflen, start_sec):
         """
         do segmentation
         require input corresponding to wav file sampled at 16000Hz
         with a single channel
         """
-
         # perform energy-based activity detection
         lseg = []
-        for lab, start, stop in _binidx2seglist(_energy_activity(loge, self.energy_ratio)[::2]):
-            if lab == 0:
-                lab = 'noEnergy'
+        for label, start, stop in _bin_labels_to_segments(_energy_activity(loge, self.energy_ratio)[::2]):
+            if label == 0:
+                label = 'noEnergy'
             else:
-                lab = 'energy'
-            lseg.append((lab, start, stop))
+                label = 'energy'
+            lseg.append(ResultFrame(label, start, stop))
 
         # perform voice activity detection
-        lseg = self.vad(mspec, lseg, difflen)[0]
+        lseg = self.vad(mspec, lseg, difflen)
 
         # perform gender segmentation on speech segments
         if self.detect_gender:
-            lseg, ret_nn = self.gender(mspec, lseg, difflen)
-            return [(lab, ret_nn[1]) for lab, start, stop in lseg]
-            # print(ret_nn.shape)
+            lseg = self.gender(mspec, lseg, difflen)
 
-        return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
+        # Convert bins to seconds
+        return [(lab, start_sec + start * .02, start_sec + stop * .02, conf) for lab, start, stop, conf in lseg]
 
     def __call__(self, filename: PathLike, start_sec: int = 0, stop_sec: Optional[int] = None):
         """
