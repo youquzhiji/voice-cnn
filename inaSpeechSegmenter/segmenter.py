@@ -24,7 +24,7 @@
 # THE SOFTWARE.
 
 
-from typing import Optional, Any
+from typing import Optional
 
 import keras
 import numpy as np
@@ -160,7 +160,7 @@ class DnnSegmenter:
             for label_index2, start2, stop2 in _bin_labels_to_segments(pred):
                 # Calculate confidence
                 label_index2 = int(label_index2)
-                confidence = np.mean(r[start2:stop2, label_index2])
+                confidence = float(np.mean(r[start2:stop2, label_index2]))
 
                 ret.append(ResultFrame(self.out_labels[int(label_index2)], start2 + cur.start, stop2 + cur.start, confidence))
 
