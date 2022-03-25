@@ -1,7 +1,11 @@
 import os
 import shutil
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Literal, Union
+
+# Types
+VadEngine = Literal['smn', 'sm']
+PathLike = Union[str, bytes, os.PathLike]
 
 
 @dataclass

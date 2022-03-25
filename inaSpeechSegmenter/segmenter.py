@@ -25,10 +25,7 @@
 
 
 import os
-import random
-import sys
-import time
-from typing import NamedTuple, Literal, Optional
+from typing import NamedTuple, Literal, Optional, Union
 
 import keras
 import numpy as np
@@ -36,6 +33,7 @@ from pyannote.algorithms.utils.viterbi import viterbi_decoding
 from skimage.util import view_as_windows as vaw
 from tensorflow.keras.utils import get_file
 
+from .constants import VadEngine, PathLike
 from .features import media2feats
 from .viterbi_utils import pred2logemission, diag_trans_exp, log_trans_exp
 
@@ -80,6 +78,12 @@ def _binidx2seglist(binidx):
     return ret
 
 
+class ResultFrame(NamedTuple):
+    label: str
+    start: float
+    end: float
+
+
 class DnnSegmenter:
     """
     DnnSegmenter is an abstract class allowing to perform Dnn-based
@@ -87,23 +91,29 @@ class DnnSegmenter:
     features obtained with SIDEKIT framework.
 
     Child classes MUST define the following class attributes:
-    * nmel: the number of mel bands to used (max: 24)
+    * num_mel: the number of mel bands to used (max: 24)
     * viterbi_arg: the argument to be used with viterbi post-processing
-    * model_fname: the filename of the serialized keras model to be used
+    * model_file_name: the filename of the serialized keras model to be used
         the model should be stored in the current directory
-    * inlabel: only segments with label name inlabel will be analyzed.
+    * in_label: only segments with label name inlabel will be analyzed.
         other labels will stay unchanged
-    * outlabels: the labels associated the output of neural network models
+    * out_labels: the labels associated the output of neural network models
     """
+    num_mel: int
+    model_file_name: str
+    in_label: str
+    out_labels: tuple[str]
+    viterbi_arg: int
+    ret_nn_pred: bool
 
     def __init__(self, batch_size):
         # load the DNN model
         url = 'https://github.com/ina-foss/inaSpeechSegmenter/releases/download/models/'
-        model_path = get_file(self.model_fname, url + self.model_fname, cache_subdir='inaSpeechSegmenter')
+        model_path = get_file(self.model_file_name, url + self.model_file_name, cache_subdir='inaSpeechSegmenter')
         self.nn = keras.models.load_model(model_path, compile=False)
         self.batch_size = batch_size
 
-    def __call__(self, mspec, lseg, difflen=0):
+    def __call__(self, mspec: np.ndarray, lseg: list[ResultFrame], difflen=0):
         """
         *** input
         * mspec: mel spectrogram
@@ -113,9 +123,8 @@ class DnnSegmenter:
         *** output
         a list of adjacent tuples (label, start, stop)
         """
-
-        if self.nmel < 24:
-            mspec = mspec[:, :self.nmel].copy()
+        if self.num_mel < 24:
+            mspec = mspec[:, :self.num_mel].copy()
 
         patches, finite = _get_patches(mspec, 68, 2)
         if difflen > 0:
@@ -125,79 +134,59 @@ class DnnSegmenter:
         assert len(finite) == len(patches), (len(patches), len(finite))
 
         batch = []
-        for lab, start, stop in lseg:
-            if lab == self.inlabel:
+        for label, start, stop in lseg:
+            if label == self.in_label:
                 batch.append(patches[start:stop, :])
-        # print(lseg)
+
         if len(batch) > 0:
             batch = np.concatenate(batch)
-            rawpred = self.nn.predict(batch, batch_size=self.batch_size)
-        nn_pred = rawpred if self.ret_nn_pred else None
+
+        raw_nn_pred = self.nn.predict(batch, batch_size=self.batch_size)
+
         ret = []
-        for lab, start, stop in lseg:
-            if lab != self.inlabel:
-                ret.append((lab, start, stop))
+        for label, start, stop in lseg:
+            if label != self.in_label:
+                ret.append((label, start, stop))
                 continue
 
             l = stop - start
-            r = rawpred[:l]
-            rawpred = rawpred[l:]
+            r = raw_nn_pred[:l]
+            raw_nn_pred = raw_nn_pred[l:]
             r[finite[start:stop] == False, :] = 0.5
-            pred = viterbi_decoding(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.outlabels)))
+            pred = viterbi_decoding(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.out_labels)))
             for lab2, start2, stop2 in _binidx2seglist(pred):
-                ret.append((self.outlabels[int(lab2)], start2 + start, stop2 + start))
-        return ret, nn_pred
+                ret.append((self.out_labels[int(lab2)], start2 + start, stop2 + start))
+
+        return ret, raw_nn_pred if self.ret_nn_pred else None
 
 
 class SpeechMusic(DnnSegmenter):
     # Voice activity detection: requires energetic activity detection
-    outlabels = ('speech', 'music')
-    model_fname = 'keras_speech_music_cnn.hdf5'
-    inlabel = 'energy'
-    nmel = 21
+    out_labels = ('speech', 'music')
+    model_file_name = 'keras_speech_music_cnn.hdf5'
+    in_label = 'energy'
+    num_mel = 21
     viterbi_arg = 150
 
 
 class SpeechMusicNoise(DnnSegmenter):
     # Voice activity detection: requires energetic activity detection
-    outlabels = ('speech', 'music', 'noise')
-    model_fname = 'keras_speech_music_noise_cnn.hdf5'
-    inlabel = 'energy'
-    nmel = 21
+    out_labels = ('speech', 'music', 'noise')
+    model_file_name = 'keras_speech_music_noise_cnn.hdf5'
+    in_label = 'energy'
+    num_mel = 21
     viterbi_arg = 80
     ret_nn_pred = False
 
 
 class Gender(DnnSegmenter):
     # Gender Segmentation, requires voice activity detection
-    outlabels = ('female', 'male')
-    model_fname = 'keras_male_female_cnn.hdf5'
-    inlabel = 'speech'
-    nmel = 24
+    out_labels = ('female', 'male')
+    model_file_name = 'keras_male_female_cnn.hdf5'
+    in_label = 'speech'
+    num_mel = 24
     viterbi_arg = 80
     ret_nn_pred = True
-
-
-class ResultFrame(NamedTuple):
-    gender: str
-    start: float
-    end: float
-
-
-class Result(NamedTuple):
-    frames: list[ResultFrame]
-    file: str
-
-
-class BatchResults(NamedTuple):
-    results: list[Result]
-    time_full: float
-    time_avg: float
-    successes: int
-    messages: list[tuple[str, int]]
-
-
-VadEngine = Literal['smn', 'sm']
 
 
 class Segmenter:
@@ -263,7 +252,7 @@ class Segmenter:
 
         return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
 
-    def __call__(self, filename: os.PathLike, start_sec: int = 0, stop_sec: Optional[int] = None):
+    def __call__(self, filename: PathLike, start_sec: int = 0, stop_sec: Optional[int] = None):
         """
         Return segmentation of a given file
                 * convert file to wav 16k mono with ffmpeg

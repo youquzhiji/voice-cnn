@@ -34,17 +34,15 @@ import numpy as np
 # os.environ['SIDEKIT'] = 'theano=false,libsvm=false,cuda=false'
 # from sidekit.frontend.io import read_wav
 # from sidekit.frontend.features import mfcc
-from .constants import ina_config
+from .constants import ina_config, PathLike
 from .sidekit_mfcc import read_wav, mfcc
 
 
-def _wav2feats(wavname):
+def _wav2feats(wav_path: PathLike):
     """
     Extract features for wav 16k mono
     """
-    ext = os.path.splitext(wavname)[-1]
-    assert ext.lower() == '.wav' or ext.lower() == '.wave'
-    sig, read_framerate, sampwidth = read_wav(wavname)
+    sig, read_framerate, sampwidth = read_wav(wav_path)
     shp = sig.shape
     # wav should contain a single channel
     assert len(shp) == 1 or (len(shp) == 2 and shp[1] == 1)
@@ -65,14 +63,14 @@ def _wav2feats(wavname):
     if len(loge) < 68:
         difflen = 68 - len(loge)
         warnings.warn(
-            "media %s duration is short. Robust results require length of at least 720 milliseconds" % wavname)
+            "media %s duration is short. Robust results require length of at least 720 milliseconds" % wav_path)
         mspec = np.concatenate((mspec, np.ones((difflen, 24)) * np.min(mspec)))
         # loge = np.concatenate((loge, np.ones(difflen) * np.min(mspec)))
 
     return mspec, loge, difflen
 
 
-def media2feats(path: os.PathLike, start_sec: int = 0, stop_sec: Optional[int] = None):
+def media2feats(path: PathLike, start_sec: int = 0, stop_sec: Optional[int] = None):
     """
     Convert media to temp wav 16k file and return features
     """
