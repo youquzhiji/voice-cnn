@@ -31,6 +31,8 @@ Copyright 2014-2021 Anthony Larcher and Sylvain Meignier
 useful parameters for speaker verification.
 """
 
+from __future__ import annotations
+
 import numpy
 import soundfile
 from scipy.fftpack.realtransforms import dct
