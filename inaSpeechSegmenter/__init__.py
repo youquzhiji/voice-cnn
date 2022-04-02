@@ -27,4 +27,4 @@ from __future__ import annotations
 
 from .segmenter import Segmenter
 
-__version__ = '1.0.4'
+__version__ = '1.0.5'

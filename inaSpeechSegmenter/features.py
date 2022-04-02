@@ -84,7 +84,7 @@ def media2feats(path: PathLike, start_sec: int = 0, stop_sec: Optional[int] = No
 
 
 def to_wav(path: PathLike, tmp_dir: bool = False, start_sec: int = 0, stop_sec: Optional[int] = None,
-           tmp_callback: Optional[Callable[[Path], Any]] = None, sr: int = 16000):
+           tmp_callback: Optional[Callable[[Path], Any]] = None, sr: Optional[int] = 16000):
     path = Path(path)
     tmp = None
     dir = path.parent
@@ -94,7 +94,9 @@ def to_wav(path: PathLike, tmp_dir: bool = False, start_sec: int = 0, stop_sec: 
 
     # build ffmpeg command line
     wav_path = dir / path.with_suffix('.converted.wav').name
-    args = [ina_config.ffmpeg, '-y', '-i', str(path.absolute()), '-ar', str(sr), '-ac', '1']
+    args = [ina_config.ffmpeg, '-y', '-i', str(path.absolute()), '-ac', '1']
+    if sr:
+        args += ['-ar', str(sr)]
     if start_sec > 0:
         args += ['-ss', '%f' % start_sec]
     if stop_sec is not None:
