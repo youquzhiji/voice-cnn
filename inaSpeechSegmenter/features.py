@@ -77,8 +77,6 @@ def media2feats(path: PathLike, start_sec: int = 0, stop_sec: Optional[int] = No
     """
     Convert media to temp wav 16k file and return features
     """
-    base, _ = os.path.splitext(os.path.basename(path))
-
     if ina_config.auto_convert:
         return to_wav(path, True, start_sec, stop_sec, _wav2feats)
 
