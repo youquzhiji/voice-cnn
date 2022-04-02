@@ -28,8 +28,9 @@ from __future__ import annotations
 import os
 import tempfile
 import warnings
+from pathlib import Path
 from subprocess import Popen, PIPE
-from typing import Optional
+from typing import Optional, Callable, Any
 
 import numpy as np
 
@@ -44,7 +45,7 @@ def _wav2feats(wav_path: PathLike):
     """
     Extract features for wav 16k mono
     """
-    sig, read_framerate, sampwidth = read_wav(wav_path)
+    sig, read_framerate, sample_width = read_wav(wav_path)
     shp = sig.shape
     # wav should contain a single channel
     assert len(shp) == 1 or (len(shp) == 2 and shp[1] == 1)
@@ -52,7 +53,7 @@ def _wav2feats(wav_path: PathLike):
     assert read_framerate == 16000
     # current version of readwav is supposed to return 4
     # whatever encoding is detected within the wav file
-    assert sampwidth == 4
+    assert sample_width == 4
     # sig *= (2**(15-sampwidth))
 
     with warnings.catch_warnings() as w:
@@ -78,20 +79,41 @@ def media2feats(path: PathLike, start_sec: int = 0, stop_sec: Optional[int] = No
     """
     base, _ = os.path.splitext(os.path.basename(path))
 
-    with tempfile.TemporaryDirectory(dir=ina_config.tmp_dir) as tmpdirname:
-        # build ffmpeg command line
-        tmpwav = tmpdirname + '/' + base + '.wav'
-        args = [ina_config.ffmpeg, '-y', '-i', path, '-ar', '16000', '-ac', '1']
+    if ina_config.auto_convert:
+        return to_wav(path, True, start_sec, stop_sec, _wav2feats)
+
+    return _wav2feats(path)
+
+
+def to_wav(path: PathLike, tmp_dir: bool = False, start_sec: int = 0, stop_sec: Optional[int] = None,
+           tmp_callback: Optional[Callable[[Path], Any]] = None):
+    path = Path(path)
+    tmp = None
+    dir = path.parent
+    if tmp_dir:
+        tmp = tempfile.TemporaryDirectory(dir=ina_config.tmp_dir)
+        dir = Path(tmp.name)
+
+    # build ffmpeg command line
+    wav_path = dir / path.with_suffix('.converted.wav').name
+    args = [ina_config.ffmpeg, '-y', '-i', str(path.absolute()), '-ar', '16000', '-ac', '1']
+    if start_sec > 0:
         args += ['-ss', '%f' % start_sec]
+    if stop_sec is not None:
+        args += ['-to', '%f' % stop_sec]
+    args.append(str(wav_path.absolute()))
 
-        if stop_sec is not None:
-            args += ['-to', '%f' % stop_sec]
-        args += [tmpwav]
+    # launch ffmpeg
+    p = Popen(args, stdout=PIPE, stderr=PIPE)
+    output, error = p.communicate()
+    assert p.returncode == 0, error
 
-        # launch ffmpeg
-        p = Popen(args, stdout=PIPE, stderr=PIPE)
-        output, error = p.communicate()
-        assert p.returncode == 0, error
+    # Call temp callback
+    if tmp:
+        if tmp_callback:
+            result = tmp_callback(wav_path)
+            tmp.cleanup()
+            return result
+        tmp.cleanup()
 
-        # Get Mel Power Spectrogram and Energy
-        return _wav2feats(tmpwav)
+    return wav_path

@@ -25,6 +25,8 @@ class InaConfig:
     ffmpeg: str = os.environ.get('ffmpeg', 'ffmpeg')
     # temporary directory
     tmp_dir: Optional[str] = None
+    # Whether to automatically convert input audio files to 16000hz wav
+    auto_convert: bool = True
 
 
 ina_config = InaConfig()
