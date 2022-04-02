@@ -85,6 +85,17 @@ def media2feats(path: PathLike, start_sec: int = 0, stop_sec: Optional[int] = No
 
 def to_wav(path: PathLike, tmp_dir: bool = False, start_sec: int = 0, stop_sec: Optional[int] = None,
            tmp_callback: Optional[Callable[[Path], Any]] = None, sr: Optional[int] = 16000):
+    """
+    Convert an audio file to wav and resample it using FFmpeg
+
+    :param path: Path of original audio file
+    :param tmp_dir: Whether to use temporary directory
+    :param start_sec: Start second (Default: 0)
+    :param stop_sec: Stop second (Default: None - full song)
+    :param tmp_callback: Callback if you're using temporary directory, because it's cleared after the call
+    :param sr: Sample rate (Default: resample to 16000) - Set to None to disable resampling
+    :return: Wave file path, or return value of the callback
+    """
     path = Path(path)
     tmp = None
     dir = path.parent
