@@ -120,7 +120,7 @@ def _update_states(states: int16[:], consecutive: int16[:]) -> float32[:]:
     return new_states
 
 
-@njit()
+@njit(cache=True)
 def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
                      initial: Optional[float32[:]] = None, consecutive: Optional[int16] = None,
                      constraint: Optional[float32[:, :]] = None) -> float32[:]:
@@ -202,6 +202,72 @@ def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
     P = np.empty((T, K), dtype=np.int32)  # P[t, k] remembers which state was used
     P[0, :] = states                      # to get from time t-1 to time t at
     # state k
+
+    for t in range(1, T):
+
+        # tmp[k, k'] is the probability of the most probable path
+        # leading to state k at time t - 1, plus the probability of
+        # transitioning from state k to state k' (at time t)
+        tmp = (V[t - 1, :] + transition.T).T
+
+        # optimal path to state k at t comes from state P[t, k] at t - 1
+        # (find among all possible states at this time t)
+        P[t, :] = np.argmax(tmp, axis=0)
+
+        # update V for time t
+        for i in states:
+            V[t, i] = emission[t, i] + tmp[P[t, i], i]
+
+    # ~~ BACK-TRACKING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    X = np.empty((T,), dtype=np.int16)
+    X[-1] = np.argmax(V[-1, :])
+    for t in range(1, T):
+        X[-(t + 1)] = P[-t, X[-t]]
+
+    # ~~ CONVERT BACK TO ORIGINAL STATES
+    return _update_states(X, consecutive)
+
+
+@njit(cache=True)
+def viterbi_decoding_simple(emission: float32[:, :], transition: float32[:, :]) -> float32[:]:
+    """
+    Viterbi decoding without any optional arguments that the INA Segmenter code didn't use
+
+    Parameters
+    ----------
+    emission : array of shape (n_samples, n_states)
+        E[t, i] is the emission log-probabilities of sample t at state i.
+    transition : array of shape (n_states, n_states)
+        T[i, j] is the transition log-probabilities from state i to state j.
+
+    Returns
+    -------
+    states : array of shape (n_samples, )
+        Most probable state sequence
+    """
+
+    # ~~ INITIALIZATION ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    T, K = emission.shape  # number of observations x number of states
+
+    # no minimum-consecutive-states constraints
+    consecutive = np.ones(K, dtype=np.int16)
+
+    # balance initial probabilities when they are not provided
+    initial = np.log(np.ones(K, dtype=np.float32) / K)
+
+    # artificially create new states to account for 'consecutive' constraints
+    states = np.arange(K)  # states 0 to K-1
+
+    # ~~ FORWARD PASS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    V = np.empty((T, K), dtype=np.int32)  # V[t, k] is the probability of the
+    V[0, :] = emission[0, :] + initial    # most probable state sequence for the
+    # first t observations that has k as
+    # its final state.
+
+    P = np.empty((T, K), dtype=np.int32)  # P[t, k] remembers which state was used
+    P[0, :] = states                      # to get from time t-1 to time t at state k
 
     for t in range(1, T):
 

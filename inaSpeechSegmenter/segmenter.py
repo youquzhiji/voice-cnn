@@ -29,13 +29,12 @@ from typing import Optional
 
 import keras
 import numpy as np
-from numba import njit
 from skimage.util import view_as_windows as vaw
 from tensorflow.keras.utils import get_file
 
 from .constants import VadEngine, PathLike, ResultFrame, InaLabel
 from .features import media2feats
-from .util.pyannote_viterbi import viterbi_decoding
+from .util.pyannote_viterbi import viterbi_decoding_simple
 from .viterbi_utils import pred_to_logemission, diag_trans_exp, log_trans_exp
 
 
@@ -49,7 +48,7 @@ def _energy_activity(loge: np.ndarray, ratio: float):
     """
     threshold = np.mean(loge[np.isfinite(loge)]) + np.log(ratio)
     raw_activity = (loge > threshold)
-    return viterbi_decoding(pred_to_logemission(raw_activity), log_trans_exp(150, cost0=-5))
+    return viterbi_decoding_simple(pred_to_logemission(raw_activity), log_trans_exp(150, cost0=-5))
 
 
 def _get_patches(mspec, w, step):
@@ -164,7 +163,7 @@ class DnnSegmenter:
             r[finite[cur.start:cur.end] == False, :] = 0.5
 
             # Modify outputs
-            pred = viterbi_decoding(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.out_labels)))
+            pred = viterbi_decoding_simple(np.log(r), diag_trans_exp(self.viterbi_arg, len(self.out_labels)))
             for label_index2, start2, stop2 in _bin_labels_to_segments(pred):
                 # Calculate confidence
                 label_index2 = int(label_index2)
