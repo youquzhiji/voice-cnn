@@ -29,6 +29,7 @@ from typing import Optional
 
 import keras
 import numpy as np
+from numba import njit, float32
 from skimage.util import view_as_windows as vaw
 from tensorflow.keras.utils import get_file
 
@@ -38,7 +39,8 @@ from .util.pyannote_viterbi import viterbi_decoding_simple
 from .viterbi_utils import pred_to_logemission, diag_trans_exp, log_trans_exp
 
 
-def _energy_activity(loge: np.ndarray, ratio: float):
+@njit(cache=True)
+def _energy_activity(loge: float32[:], ratio: float32) -> float32[:]:
     """
     Get energy activity
 
