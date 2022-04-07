@@ -1,15 +1,10 @@
 import numpy as np
 import tensorflow as tf
-# import tensorflow_io as tfio
-# from inaSpeechSegmenter import sidekit_mfcc
 from numba import njit, float32, int32, vectorize
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.signal import window_ops, fft_ops, shape_ops
 from tensorflow.python.ops.signal.spectral_ops import _enclosing_power_of_two
 from tensorflow.python.util import dispatch
-
-# from inaSpeechSegmenter.sidekit_mfcc import read_wav
-# from run_api import Timer
 
 
 @njit(cache=True)
@@ -132,8 +127,7 @@ def trf_bank_cached(fs: float32, nfft: float32, f_min: float32, f_max: float32,
 
 
 @dispatch.add_dispatch_support
-def power_spectrum(signals, frame_length, frame_step, fft_length=None,
-         pad_end=False, name=None):
+def power_spectrum(signals, frame_length, frame_step, fft_length=None, pad_end=False, name=None):
     """
     Modified from tf.signal.stft()
 
@@ -185,23 +179,4 @@ def mel_spect(sig, lowfreq=100, maxfreq=8000, nlinfilt=0, nlogfilt=24, nwin=0.02
     mel_spectrogram = np.log(np.dot(spec.numpy(), fbank.T))
 
     return loge.numpy(), mel_spectrogram
-
-
-# if __name__ == '__main__':
-#     sig, read_framerate, sample_width = read_wav('../VT 150hz baseline example.converted.wav')
-#     loge, mspec = mel_spect(sig.astype(np.float32))
-#     _, loge2, _, mspec2 = sidekit_mfcc.mfcc(sig.astype(np.float32), get_mspec=True)
-#     print(mspec.shape, mspec)
-#     print(mspec2.shape, mspec2)
-#     print('distance:', np.linalg.norm(mspec) - np.linalg.norm(mspec2))
-#     print('distance loge:', np.linalg.norm(loge[~np.isnan(loge)]) - np.linalg.norm(loge2[~np.isnan(loge)]))
-#
-#
-#     timer = Timer()
-#     for i in range(5):
-#         _ = sidekit_mfcc.mfcc(sig.astype(np.float32), get_mspec=True)
-#     timer.log('sidekit mfcc x5')
-#     for i in range(5):
-#         _ = mel_spect(sig.astype(np.float32))
-#     timer.log('tf mfcc x5')
 
