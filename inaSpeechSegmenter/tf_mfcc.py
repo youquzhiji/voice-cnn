@@ -173,8 +173,6 @@ def mel_spect(sig, lowfreq=100, maxfreq=8000, nlinfilt=0, nlogfilt=24, nwin=0.02
     n_fft = 2 ** int(np.ceil(np.log2(int(round(window_length)))))
 
     spec, loge = power_spectrum(sig, frame_length=window_length, fft_length=n_fft, frame_step=step)
-    # mel_spectrogram = tfio.audio.melscale(spec, rate=fs, mels=nlogfilt, fmin=lowfreq, fmax=maxfreq)
-
     fbank = trf_bank_cached(fs, n_fft, lowfreq, maxfreq, nlinfilt, nlogfilt)
     mel_spectrogram = np.log(np.dot(spec.numpy(), fbank.T))
 
