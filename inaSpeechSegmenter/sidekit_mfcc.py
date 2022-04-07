@@ -33,7 +33,7 @@ useful parameters for speaker verification.
 
 from __future__ import annotations
 
-import numpy
+import numpy as np
 import soundfile
 from numba import float32
 from scipy.fftpack.realtransforms import dct
@@ -49,14 +49,14 @@ __docformat__ = 'reStructuredText'
 from inaSpeechSegmenter.tf_mfcc import trf_bank_cached
 
 wav_flag = "float32"  # Could be "int16"
-PARAM_TYPE = numpy.float32
+PARAM_TYPE = np.float32
 
 
-def read_wav(input_file_name: str) -> tuple[float32[:], int, int]:
+def read_wav(input_file_name: str, dtype=np.float32) -> tuple[float32[:], int, int]:
     nfo = soundfile.info(input_file_name)
-    sig, sample_rate = soundfile.read(input_file_name, dtype=wav_flag)
-    sig = numpy.reshape(numpy.array(sig), (-1, nfo.channels)).squeeze()
-    sig = sig.astype(numpy.float32)
+    sig, sample_rate = soundfile.read(input_file_name, dtype=dtype)
+    sig = np.reshape(np.array(sig), (-1, nfo.channels)).squeeze()
+    sig = sig.astype(dtype)
     return sig, sample_rate, 4
 
 
@@ -70,19 +70,19 @@ def power_spectrum(input_sig, fs=8000, win_time=0.025, shift=0.01, prefac=0.97):
     # Pre-emphasis filtering is applied after framing to be consistent with stream processing
     framed = pre_emphasis(framed, prefac)
     l = framed.shape[0]
-    n_fft = 2 ** int(numpy.ceil(numpy.log2(window_length)))
+    n_fft = 2 ** int(np.ceil(np.log2(window_length)))
     # Windowing has been changed to hanning which is supposed to have less noisy sidelobes
-    # ham = numpy.hamming(window_length)
-    window = numpy.hanning(window_length)
+    # ham = np.hamming(window_length)
+    window = np.hanning(window_length)
 
-    spec = numpy.ones((l, int(n_fft / 2) + 1), dtype=PARAM_TYPE)
-    log_energy = numpy.log((framed ** 2).sum(axis=1))
+    spec = np.ones((l, int(n_fft / 2) + 1), dtype=PARAM_TYPE)
+    log_energy = np.log((framed ** 2).sum(axis=1))
     dec = 500000
     start = 0
     stop = min(dec, l)
     while start < l:
         ahan = framed[start:stop, :] * window
-        mag = numpy.fft.rfft(ahan, n_fft, axis=-1)
+        mag = np.fft.rfft(ahan, n_fft, axis=-1)
         spec[start:stop, :] = mag.real ** 2 + mag.imag ** 2
         start = stop
         stop = min(stop + dec, l)
@@ -100,18 +100,18 @@ def framing(sig, win_size, win_shift=1, context=(0, 0), pad='zeros'):
     """
     dsize = sig.dtype.itemsize
     if sig.ndim == 1:
-        sig = sig[:, numpy.newaxis]
+        sig = sig[:, np.newaxis]
     # Manage padding
     c = (context,) + (sig.ndim - 1) * ((0, 0),)
     _win_size = win_size + sum(context)
     shape = (int((sig.shape[0] - win_size) / win_shift) + 1, 1, _win_size, sig.shape[1])
     strides = tuple(map(lambda x: x * dsize, [win_shift * sig.shape[1], 1, sig.shape[1], 1]))
     if pad == 'zeros':
-        return numpy.lib.stride_tricks.as_strided(numpy.lib.pad(sig, c, 'constant', constant_values=(0,)),
+        return np.lib.stride_tricks.as_strided(np.lib.pad(sig, c, 'constant', constant_values=(0,)),
                                                   shape=shape,
                                                   strides=strides).squeeze()
     elif pad == 'edge':
-        return numpy.lib.stride_tricks.as_strided(numpy.lib.pad(sig, c, 'edge'),
+        return np.lib.stride_tricks.as_strided(np.lib.pad(sig, c, 'edge'),
                                                   shape=shape,
                                                   strides=strides).squeeze()
 
@@ -122,10 +122,10 @@ def pre_emphasis(input_sig, pre):
     :param pre: value that defines the pre-emphasis filter. 
     """
     if input_sig.ndim == 1:
-        return (input_sig - numpy.c_[input_sig[numpy.newaxis, :][..., :1],
-                                     input_sig[numpy.newaxis, :][..., :-1]].squeeze() * pre)
+        return (input_sig - np.c_[input_sig[np.newaxis, :][..., :1],
+                                     input_sig[np.newaxis, :][..., :-1]].squeeze() * pre)
     else:
-        return input_sig - numpy.c_[input_sig[..., :1], input_sig[..., :-1]] * pre
+        return input_sig - np.c_[input_sig[..., :1], input_sig[..., :-1]] * pre
 
 
 def mfcc(input_sig,
@@ -181,10 +181,10 @@ def mfcc(input_sig,
                                       shift=shift,
                                       prefac=prefac)
     # Filter the spectrum through the triangle filter-bank
-    n_fft = 2 ** int(numpy.ceil(numpy.log2(int(round(nwin * fs)))))
+    n_fft = 2 ** int(np.ceil(np.log2(int(round(nwin * fs)))))
     fbank = trf_bank_cached(fs, n_fft, lowfreq, maxfreq, nlinfilt, nlogfilt)[0]
 
-    mspec = numpy.log(numpy.dot(spec, fbank.T))  # A tester avec log10 et log
+    mspec = np.log(np.dot(spec, fbank.T))  # A tester avec log10 et log
     # Use the DCT to 'compress' the coefficients (spectrum -> cepstrum domain)
     # The C0 term is removed as it is the constant term
     ceps = dct(mspec, type=2, norm='ortho', axis=-1)[:, 1:nceps + 1]
