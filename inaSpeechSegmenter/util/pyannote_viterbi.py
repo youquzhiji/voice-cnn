@@ -28,6 +28,8 @@
 
 from __future__ import unicode_literals
 
+from typing import Optional
+
 import numba
 import numpy as np
 
@@ -118,8 +120,10 @@ def _update_states(states: int16[:], consecutive: int16[:]) -> float32[:]:
     return new_states
 
 
+@njit()
 def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
-                     initial=None, consecutive=None, constraint=None):
+                     initial: Optional[float32[:]] = None, consecutive: Optional[int16] = None,
+                     constraint: Optional[float32[:, :]] = None) -> float32[:]:
     """(Constrained) Viterbi decoding
 
     Parameters
@@ -152,11 +156,11 @@ def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
 
     # no minimum-consecutive-states constraints
     if consecutive is None:
-        consecutive = np.ones((k, ), dtype=np.int16)
+        consecutive = np.ones(k, dtype=np.int16)
 
     # same value for all states
     elif isinstance(consecutive, int):
-        consecutive = consecutive * np.ones((k, ), dtype=np.int16)
+        consecutive = consecutive * np.ones(k, dtype=np.int16)
 
     # (potentially) different values per state
     else:
@@ -167,7 +171,7 @@ def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
 
     # balance initial probabilities when they are not provided
     if initial is None:
-        initial = np.log(np.ones((k, ), dtype=np.float32) / k)
+        initial = np.log(np.ones(k, dtype=np.float32) / k)
 
     # no constraint?
     if constraint is None:
@@ -182,22 +186,21 @@ def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
     states = np.arange(K)  # states 0 to K-1
 
     # set emission probability to zero for forbidden states
-    emission[
-        np.where(constraint == VITERBI_CONSTRAINT_FORBIDDEN)] = LOG_ZERO
+    emission = np.where(constraint != VITERBI_CONSTRAINT_FORBIDDEN, emission, LOG_ZERO)
 
     # set emission probability to zero for all states but the mandatory one
-    for t, k in zip(*np.where(constraint == VITERBI_CONSTRAINT_MANDATORY)):
-        emission[t, states != k] = LOG_ZERO
+    tmp1 = emission[..., ::-1]
+    emission = np.where(constraint != VITERBI_CONSTRAINT_MANDATORY, tmp1, LOG_ZERO)[..., ::-1]
 
     # ~~ FORWARD PASS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    V = np.empty((T, K))                # V[t, k] is the probability of the
-    V[0, :] = emission[0, :] + initial  # most probable state sequence for the
+    V = np.empty((T, K), dtype=np.int32)  # V[t, k] is the probability of the
+    V[0, :] = emission[0, :] + initial    # most probable state sequence for the
     # first t observations that has k as
     # its final state.
 
-    P = np.empty((T, K), dtype=int)  # P[t, k] remembers which state was used
-    P[0, :] = states                 # to get from time t-1 to time t at
+    P = np.empty((T, K), dtype=np.int32)  # P[t, k] remembers which state was used
+    P[0, :] = states                      # to get from time t-1 to time t at
     # state k
 
     for t in range(1, T):
@@ -212,7 +215,8 @@ def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
         P[t, :] = np.argmax(tmp, axis=0)
 
         # update V for time t
-        V[t, :] = emission[t, :] + tmp[P[t, :], states]
+        for i in states:
+            V[t, i] = emission[t, i] + tmp[P[t, i], i]
 
     # ~~ BACK-TRACKING ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     X = np.empty((T,), dtype=np.int16)
