@@ -39,6 +39,7 @@ import numpy as np
 # from sidekit.frontend.features import mfcc
 from .constants import ina_config, PathLike
 from .sidekit_mfcc import read_wav, mfcc
+from .tf_mfcc import mel_spect
 
 
 def _wav2feats(wav_path: PathLike):
@@ -56,10 +57,10 @@ def _wav2feats(wav_path: PathLike):
     assert sample_width == 4
     # sig *= (2**(15-sampwidth))
 
-    with warnings.catch_warnings() as w:
-        # ignore warnings resulting from empty signals parts
-        warnings.filterwarnings('ignore', message='divide by zero encountered in log', category=RuntimeWarning)
-        _, loge, _, mspec = mfcc(sig.astype(np.float32), get_mspec=True)
+    np.seterr(divide='ignore')
+    np.seterr(invalid='ignore')
+    # _, loge, _, mspec = mfcc(sig.astype(np.float32), get_mspec=True)
+    loge, mspec = mel_spect(sig)
 
     # Management of short duration segments
     difflen = 0
