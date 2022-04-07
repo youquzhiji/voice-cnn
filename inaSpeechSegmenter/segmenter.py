@@ -29,20 +29,27 @@ from typing import Optional
 
 import keras
 import numpy as np
-from pyannote.algorithms.utils.viterbi import viterbi_decoding
+from numba import njit
 from skimage.util import view_as_windows as vaw
 from tensorflow.keras.utils import get_file
 
 from .constants import VadEngine, PathLike, ResultFrame, InaLabel
 from .features import media2feats
-from .viterbi_utils import pred2logemission, diag_trans_exp, log_trans_exp
+from .util.pyannote_viterbi import viterbi_decoding
+from .viterbi_utils import pred_to_logemission, diag_trans_exp, log_trans_exp
 
 
-def _energy_activity(loge, ratio):
+def _energy_activity(loge: np.ndarray, ratio: float):
+    """
+    Get energy activity
+
+    :param loge: Log energy
+    :param ratio: Energy Ratio (0.03)
+    :return:
+    """
     threshold = np.mean(loge[np.isfinite(loge)]) + np.log(ratio)
     raw_activity = (loge > threshold)
-    return viterbi_decoding(pred2logemission(raw_activity),
-                            log_trans_exp(150, cost0=-5))
+    return viterbi_decoding(pred_to_logemission(raw_activity), log_trans_exp(150, cost0=-5))
 
 
 def _get_patches(mspec, w, step):
