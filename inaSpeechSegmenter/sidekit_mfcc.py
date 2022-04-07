@@ -213,19 +213,9 @@ def trfbank(fs, nfft, lowfreq, maxfreq, nlinfilt, nlogfilt, midfreq=1000):
     return fbank, frequences
 
 
-def power_spectrum(input_sig,
-                   fs=8000,
-                   win_time=0.025,
-                   shift=0.01,
-                   prefac=0.97):
+def power_spectrum(input_sig, fs=8000, win_time=0.025, shift=0.01, prefac=0.97):
     """
     Compute the power spectrum of the signal.
-    :param input_sig:
-    :param fs:
-    :param win_time:
-    :param shift:
-    :param prefac:
-    :return:
     """
     window_length = int(round(win_time * fs))
     overlap = window_length - int(shift * fs)

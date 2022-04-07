@@ -22,19 +22,21 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-
 import numpy as np
+from numba import *
 
 
-def pred2logemission(pred, eps=1e-10):
-    pred = np.array(pred)
-    ret = np.ones((len(pred), 2)) * eps
+@njit(cache=True)
+def pred_to_logemission(pred: boolean[:]) -> float32[:, :]:
+    eps = float32(1e-10)
+    ret = np.ones((len(pred), 2), dtype=np.float32) * eps
     ret[pred == 0, 0] = 1 - eps
     ret[pred == 1, 1] = 1 - eps
     return np.log(ret)
 
 
-def log_trans_exp(exp, cost0=0, cost1=0):
+@njit(cache=True)
+def log_trans_exp(exp: int32, cost0: float32 = 0, cost1: float32 = 0):
     # transition cost is assumed to be 10**-exp
     cost = -exp * np.log(10)
     ret = np.ones((2, 2)) * cost
@@ -43,9 +45,10 @@ def log_trans_exp(exp, cost0=0, cost1=0):
     return ret
 
 
-def diag_trans_exp(exp, dim):
-    cost = -exp * np.log(10)
-    ret = np.ones((dim, dim)) * cost
+@njit(cache=True)
+def diag_trans_exp(exp: int32, dim: int32) -> float32[:, :]:
+    cost = -exp * np.log(int32(10))
+    ret = np.ones((dim, dim), dtype=np.float32) * cost
     for i in range(dim):
         ret[i, i] = 0
     return ret
