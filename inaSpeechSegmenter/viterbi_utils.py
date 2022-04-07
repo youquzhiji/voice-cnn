@@ -36,10 +36,10 @@ def pred_to_logemission(pred: boolean[:]) -> float32[:, :]:
 
 
 @njit(cache=True)
-def log_trans_exp(exp: int32, cost0: float32 = 0, cost1: float32 = 0):
+def log_trans_exp(exp: int32, cost0: float32 = 0, cost1: float32 = 0) -> float32[:, :]:
     # transition cost is assumed to be 10**-exp
-    cost = -exp * np.log(10)
-    ret = np.ones((2, 2)) * cost
+    cost = float32(-exp * np.log(10))
+    ret = np.ones((2, 2), dtype=np.float32) * cost
     ret[0, 0] = cost0
     ret[1, 1] = cost1
     return ret
@@ -47,7 +47,7 @@ def log_trans_exp(exp: int32, cost0: float32 = 0, cost1: float32 = 0):
 
 @njit(cache=True)
 def diag_trans_exp(exp: int32, dim: int32) -> float32[:, :]:
-    cost = -exp * np.log(int32(10))
+    cost = float32(-exp * np.log(10))
     ret = np.ones((dim, dim), dtype=np.float32) * cost
     for i in range(dim):
         ret[i, i] = 0

@@ -30,7 +30,6 @@ from __future__ import unicode_literals
 
 import numba
 import numpy as np
-import itertools
 
 from numba import njit, int32, float32, int16
 
@@ -45,35 +44,40 @@ LOG_ZERO = np.log(1e-45, dtype=np.float32)
 # the following functions are here to help in this process
 
 
-# create new transition prob. matrix accounting for duplicated states.
-def _update_transition(transition, consecutive):
-
+@njit(cache=True)
+def _update_transition(transition: float32[:, :], consecutive: int16[:]) -> float32[:, :]:
+    """
+    Create new transition prob. matrix accounting for duplicated states.
+    """
     # initialize with LOG_ZERO everywhere
     # except on the +1 diagonal np.log(1)
-    new_n_states = np.sum(consecutive)
-    new_transition = LOG_ZERO * np.ones((new_n_states, new_n_states))
+    new_n_states = int32(np.sum(consecutive))
+    new_transition = LOG_ZERO * np.ones((new_n_states, new_n_states), dtype=np.float32)
     for i in range(1, new_n_states):
         new_transition[i - 1, i] = np.log(1)
 
     n_states = len(consecutive)
-    boundary = np.hstack(([0], np.cumsum(consecutive)))
+    boundary = np.hstack((np.array([0]), np.cumsum(consecutive)))
     start = boundary[:-1]
     end = boundary[1:] - 1
 
-    for i, j in itertools.product(range(n_states), repeat=2):
-        new_transition[end[i], start[j]] = transition[i, j]
+    for i in range(n_states):
+        for j in range(n_states):
+            new_transition[end[i], start[j]] = transition[i, j]
 
     return new_transition
 
 
-# create new initial prob. matrix accounting for duplicated states.
-def _update_initial(initial, consecutive):
-
+@njit(cache=True)
+def _update_initial(initial: float32[:], consecutive: int16[:]) -> float32[:]:
+    """
+    Create new initial prob. matrix accounting for duplicated states.
+    """
     new_n_states = np.sum(consecutive)
-    new_initial = LOG_ZERO * np.ones((new_n_states, ))
+    new_initial = LOG_ZERO * np.ones(new_n_states, dtype=np.float32)
 
     n_states = len(consecutive)
-    boundary = np.hstack(([0], np.cumsum(consecutive)))
+    boundary = np.hstack((np.array([0]), np.cumsum(consecutive)))
     start = boundary[:-1]
 
     for i in range(n_states):
@@ -163,7 +167,7 @@ def viterbi_decoding(emission: float32[:, :], transition: float32[:, :],
 
     # balance initial probabilities when they are not provided
     if initial is None:
-        initial = np.log(np.ones((k, )) / k)
+        initial = np.log(np.ones((k, ), dtype=np.float32) / k)
 
     # no constraint?
     if constraint is None:
