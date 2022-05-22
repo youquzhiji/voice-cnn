@@ -25,7 +25,6 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 import warnings
 from pathlib import Path
@@ -34,11 +33,8 @@ from typing import Optional, Callable, Any
 
 import numpy as np
 
-# os.environ['SIDEKIT'] = 'theano=false,libsvm=false,cuda=false'
-# from sidekit.frontend.io import read_wav
-# from sidekit.frontend.features import mfcc
 from .constants import ina_config, PathLike
-from .sidekit_mfcc import read_wav, mfcc
+from .sidekit_mfcc import read_wav
 from .tf_mfcc import mel_spect
 
 
@@ -121,11 +117,12 @@ def to_wav(path: PathLike, tmp_dir: bool = False, start_sec: int = 0, stop_sec: 
     assert p.returncode == 0, error
 
     # Call temp callback
+    if tmp_callback:
+        result = tmp_callback(wav_path)
+    else:
+        result = wav_path
+
     if tmp:
-        if tmp_callback:
-            result = tmp_callback(wav_path)
-            tmp.cleanup()
-            return result
         tmp.cleanup()
 
-    return wav_path
+    return result
