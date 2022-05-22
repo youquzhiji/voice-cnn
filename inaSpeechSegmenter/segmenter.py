@@ -30,9 +30,9 @@ from typing import Optional
 import keras
 import numpy as np
 from numba import njit, float32
-from skimage.util import view_as_windows as vaw
 from tensorflow.keras.utils import get_file
 
+from .skimage_vaw import view_as_windows as vaw
 from .constants import VadEngine, PathLike, ResultFrame, InaLabel
 from .features import media2feats
 from .util.pyannote_viterbi import viterbi_decoding_simple
@@ -276,3 +276,6 @@ class Segmenter:
         """
         mspec, loge, difflen = media2feats(filename, start_sec, stop_sec)
         return self.segment_feats(mspec, loge, difflen, start_sec)
+
+    def segment_to_class(self, filename: PathLike, start_sec: int = 0, stop_sec: Optional[int] = None) -> list[ResultFrame]:
+        return [ResultFrame(*s) for s in self(filename, start_sec, stop_sec)]

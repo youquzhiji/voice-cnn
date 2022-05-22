@@ -46,7 +46,7 @@ __email__ = "anthony.larcher@univ-lemans.fr"
 __status__ = "Production"
 __docformat__ = 'reStructuredText'
 
-from inaSpeechSegmenter.tf_mfcc import trf_bank_cached
+from inaSpeechSegmenter.tf_mfcc import trf_bank_cached, pre_emphasis
 
 wav_flag = "float32"  # Could be "int16"
 PARAM_TYPE = np.float32
@@ -114,18 +114,6 @@ def framing(sig, win_size, win_shift=1, context=(0, 0), pad='zeros'):
         return np.lib.stride_tricks.as_strided(np.lib.pad(sig, c, 'edge'),
                                                   shape=shape,
                                                   strides=strides).squeeze()
-
-
-def pre_emphasis(input_sig, pre):
-    """Pre-emphasis of an audio signal.
-    :param input_sig: the input vector of signal to pre emphasize
-    :param pre: value that defines the pre-emphasis filter. 
-    """
-    if input_sig.ndim == 1:
-        return (input_sig - np.c_[input_sig[np.newaxis, :][..., :1],
-                                     input_sig[np.newaxis, :][..., :-1]].squeeze() * pre)
-    else:
-        return input_sig - np.c_[input_sig[..., :1], input_sig[..., :-1]] * pre
 
 
 def mfcc(input_sig,

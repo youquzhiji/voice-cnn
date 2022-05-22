@@ -35,7 +35,7 @@ setup(
     author_email="hykilpikonna@gmail.com",
     description='Modified version of Ina Speech Segmenter',
     license="MIT",
-    install_requires=['tensorflow', 'tensorflow-io', 'numpy', 'pandas', 'scikit-image', 'soundfile', 'numba'],
+    install_requires=['tensorflow', 'tensorflow-io', 'numpy', 'soundfile', 'numba'],
     url="https://github.com/youquzhiji/voice-cnn",
     packages=find_packages(),
     include_package_data=True,
